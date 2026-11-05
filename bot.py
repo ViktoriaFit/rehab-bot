@@ -1,9 +1,23 @@
-﻿import asyncio
+import asyncio
+import threading
+from flask import Flask
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
+# --- ТОКЕН ---
 TOKEN = '9041258668:AAGS5wIfsyh6MMeFxOwtgt_j0cirhOgiTGY'
 
+# --- ВЕБ-СЕРВЕР ДЛЯ RENDER ---
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=10000)
+
+# --- БОТ ---
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -97,7 +111,9 @@ async def handle_text(message: types.Message):
     if not found:
         await message.answer("Диагноз не найден. Попробуй ввести по-другому.")
 
+# --- ЗАПУСК ---
 async def main():
+    threading.Thread(target=run_flask, daemon=True).start()
     print("Бот запущен...")
     await dp.start_polling(bot)
 
