@@ -21,6 +21,10 @@ def run_flask():
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# --- ХРАНИЛИЩЕ ДЛЯ ВЫБОРА ПОЛЬЗОВАТЕЛЯ ---
+# Здесь мы будем хранить, какие варианты бот показал конкретному пользователю
+user_choices = {}
+
 knowledge_base = {
     "грыжа поясничного отдела": {
         "можно": ["Изолированные упражнения на разгибание поясницы", "Упражнения на стабилизацию (кор) после стихания боли", "Укрепление мышц вдоль позвоночника"],
@@ -97,6 +101,8 @@ knowledge_base = {
 # --- УМНЫЙ ПОИСК ---
 @dp.message(Command("start"))
 async def start(message: types.Message):
+    # Очищаем историю выбора для этого пользователя
+    user_choices[message.from_user.id] = []
     text = (
         "👋 Привет! Я бот-помощник для тренеров по реабилитации.\n\n"
         "Просто напиши, что беспокоит клиента (например, 'болит плечо' или 'грыжа'), "
@@ -108,19 +114,48 @@ async def start(message: types.Message):
 @dp.message()
 async def handle_text(message: types.Message):
     text = message.text.lower().strip()
+    user_id = message.from_user.id
     
-    # Ищем все совпадения по ключевым словам
+    # Если пользователь ввел цифру, и у нас есть сохраненный список
+    if text.isdigit() and user_id in user_choices and user_choices[user_id]:
+        choice_index = int(text) - 1
+        if 0 <= choice_index < len(user_choices[user_id]):
+            key = user_choices[user_id][choice_index]
+            data = knowledge_base[key]
+            answer = f"🔍 *{key.capitalize()}*\n\n"
+            answer += "✅ *МОЖНО:*\n" + "\n".join([f"• {i}" for i in data["можно"]])
+            answer += "\n\n🚫 *НЕЛЬЗЯ / ОСТОРОЖНО:*\n" + "\n".join([f"• {i}" for i in data["нельзя"]])
+            answer += f"\n\n📚 *Источники:* {data['ссылки']}"
+            answer += "\n\n⚠️ _Это не медицинская рекомендация. Проконсультируйтесь с врачом._"
+            await message.answer(answer, parse_mode="Markdown")
+            # Очищаем выбор после ответа
+            user_choices[user_id] = []
+            return
+        else:
+            await message.answer("Неверный номер. Попробуй ещё раз.")
+            return
+
+    # Ищем совпадения по ключевым словам
     found_keys = []
     for key in knowledge_base:
-        # Проверяем, есть ли ключевые слова из диагноза в тексте пользователя
         key_words = key.lower().split()
-        # Если хотя бы одно слово из диагноза есть в тексте (например, "плечо" или "грыжа")
+        # Если хотя бы одно слово из диагноза есть в тексте пользователя
         if any(word in text for word in key_words):
             found_keys.append(key)
     
     if not found_keys:
+        # Если не нашли, попробуем поискать по отдельным словам (например, "плечо")
+        # Это нужно для случаев, когда в диагнозе "операции на плече", а пользователь пишет "плечо"
+        for key in knowledge_base:
+            if any(word in key.lower() for word in text.split()):
+                found_keys.append(key)
+    
+    if not found_keys:
         await message.answer("Диагноз не найден. Попробуй написать по-другому (например, 'болит спина' или 'грыжа').")
         return
+    
+    # Сохраняем найденные варианты для этого пользователя
+    user_choices[user_id] = found_keys
     
     # Если найдено больше одного варианта, предлагаем список
     if len(found_keys) > 1:
