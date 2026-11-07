@@ -22,7 +22,6 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 # --- ХРАНИЛИЩЕ ДЛЯ ВЫБОРА ПОЛЬЗОВАТЕЛЯ ---
-# Здесь мы будем хранить, какие варианты бот показал конкретному пользователю
 user_choices = {}
 
 knowledge_base = {
@@ -98,10 +97,9 @@ knowledge_base = {
     }
 }
 
-# --- УМНЫЙ ПОИСК ---
+# --- УМНЫЙ ПОИСК ПО КОРНЯМ СЛОВ ---
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    # Очищаем историю выбора для этого пользователя
     user_choices[message.from_user.id] = []
     text = (
         "👋 Привет! Я бот-помощник для тренеров по реабилитации.\n\n"
@@ -128,33 +126,32 @@ async def handle_text(message: types.Message):
             answer += f"\n\n📚 *Источники:* {data['ссылки']}"
             answer += "\n\n⚠️ _Это не медицинская рекомендация. Проконсультируйтесь с врачом._"
             await message.answer(answer, parse_mode="Markdown")
-            # Очищаем выбор после ответа
             user_choices[user_id] = []
             return
         else:
             await message.answer("Неверный номер. Попробуй ещё раз.")
             return
 
-    # Ищем совпадения по ключевым словам
+    # Ищем совпадения по корням слов (первые 4 буквы)
     found_keys = []
     for key in knowledge_base:
         key_words = key.lower().split()
-        # Если хотя бы одно слово из диагноза есть в тексте пользователя
-        if any(word in text for word in key_words):
-            found_keys.append(key)
-    
-    if not found_keys:
-        # Если не нашли, попробуем поискать по отдельным словам (например, "плечо")
-        # Это нужно для случаев, когда в диагнозе "операции на плече", а пользователь пишет "плечо"
-        for key in knowledge_base:
-            if any(word in key.lower() for word in text.split()):
-                found_keys.append(key)
+        # Проверяем, есть ли корень слова из диагноза в тексте пользователя
+        for word in key_words:
+            if len(word) >= 4:
+                root = word[:4]  # берем первые 4 буквы
+                if root in text:
+                    found_keys.append(key)
+                    break  # если нашли совпадение по одному слову, переходим к следующему диагнозу
     
     if not found_keys:
         await message.answer("Диагноз не найден. Попробуй написать по-другому (например, 'болит спина' или 'грыжа').")
         return
     
-    # Сохраняем найденные варианты для этого пользователя
+    # Убираем дубликаты
+    found_keys = list(set(found_keys))
+    
+    # Сохраняем найденные варианты
     user_choices[user_id] = found_keys
     
     # Если найдено больше одного варианта, предлагаем список
